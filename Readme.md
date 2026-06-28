@@ -1,112 +1,134 @@
-#  Flutter Docs RAG Pipeline
+# RAG Pipeline: Chunk Size vs Retrieval Performance
 
-A Retrieval-Augmented Generation (RAG) pipeline that lets you ask natural language questions about Flutter — and actually get answers — without paying a single rupee for any API.
+## Overview
 
----
-
-##  What It Does
-
-Scrapes real Flutter documentation pages, breaks them into chunks, embeds them locally using a sentence transformer, stores everything in a ChromaDB vector store, and then uses **TinyLlama-1.1B** running on GPU to generate answers — all inside Google Colab.
+This project implements a Retrieval-Augmented Generation (RAG) pipeline using Flutter documentation as the knowledge base. The goal is to study how different chunk sizes affect retrieval performance in a semantic search system.
 
 ---
 
-##  Pipeline Architecture
+## Objective
 
-```
-Flutter Docs (Web)
-       ↓
-  WebBaseLoader
-       ↓
-  Text Cleaning
-       ↓
-  RecursiveCharacterTextSplitter (chunk_size=1000, overlap=200)
-       ↓
-  HuggingFace Embeddings (all-MiniLM-L6-v2)
-       ↓
-  ChromaDB Vector Store
-       ↓
-  Retriever (top 3 chunks)
-       ↓
-  TinyLlama-1.1B-Chat (local, on T4 GPU)
-       ↓
-  Answer
-```
+The experiment evaluates:
+
+* Impact of chunk size on retrieval quality
+* Trade-off between context preservation and noise
+* Effectiveness of semantic embeddings across varying chunk granularities
 
 ---
 
-##  Tech Stack
+## Dataset
 
-| Component | Tool |
-|---|---|
-| Framework | LangChain |
-| Document Loader | WebBaseLoader (LangChain Community) |
-| Text Splitter | RecursiveCharacterTextSplitter |
-| Embeddings | sentence-transformers/all-MiniLM-L6-v2 |
-| Vector Store | ChromaDB |
-| LLM | TinyLlama/TinyLlama-1.1B-Chat-v1.0 |
-| Runtime | Google Colab (T4 GPU, free tier) |
+* Source: Official Flutter documentation
+* Number of pages: ~50
+* Topics covered:
 
----
-
-##  Installation
-
-```bash
-pip install langchain_community langchainhub chromadb langchain langchain-huggingface
-pip install transformers>=4.37.0 sentence-transformers huggingface_hub
-```
+  * UI and Widgets
+  * Navigation
+  * Networking
+  * State Management
+  * Performance
+  * Testing
+  * Architecture
 
 ---
 
-##  How to Run
+## Methodology
 
-1. Open the notebook in **Google Colab**
-2. Make sure runtime is set to **T4 GPU** — `Runtime > Change runtime type > T4 GPU`
-3. Add your HuggingFace token to Colab Secrets with the name `HuggingFace_API`
-4. Run all cells from top to bottom
-5. Ask your Flutter question in the last cell
+### 1. Data Loading
 
-```python
-response = rag_chain.invoke("What is Flutter and what can you build with it?")
-print(response)
-```
+Web pages are scraped using LangChain's `WebBaseLoader`.
 
----
+### 2. Preprocessing
 
-##  Data Sources
+* Removal of extra whitespace
+* Text normalization
 
-The pipeline scrapes these Flutter documentation pages:
+### 3. Chunking
 
-- https://docs.flutter.dev/get-started/install
-- https://docs.flutter.dev/get-started/codelab
-- https://docs.flutter.dev/ui
-- https://docs.flutter.dev/ui/widgets
-- https://docs.flutter.dev/cookbook
-- https://docs.flutter.dev/cookbook/navigation/navigation-basics
-- https://docs.flutter.dev/cookbook/networking/fetch-data
-- https://docs.flutter.dev/data-and-backend/state-mgmt/intro
+Text is split using `RecursiveCharacterTextSplitter` with:
 
----
+* Chunk sizes: 250, 500, 1000, 1500, 2000
+* Overlap: 20%
 
-##  Why Not OpenAI?
+### 4. Embedding Model
 
-Started with `langchain-openai` + `ChatOpenAI` but the free quota ran out almost instantly. Switched to a fully local setup using HuggingFace models — works just as well for this use case and costs nothing.
+* Model: `sentence-transformers/all-MiniLM-L6-v2`
+* Converts text into dense vector representations
 
-Tried `HuggingFaceEndpoint` with Mistral and Zephyr but HF's free inference API kept routing them through third-party providers (`novita`, `featherless-ai`) that only supported `conversational` task — not `text-generation`. Final fix was loading TinyLlama directly on Colab's T4 GPU using `transformers` pipeline.
+### 5. Vector Store
 
----
+* Database: ChromaDB
+* Used for similarity-based retrieval
 
-##  Project Structure
+### 6. Retrieval
 
-```
-RAG_PIPELINE.ipynb   ← main notebook with all cells
-README.md            ← you're reading it
-```
+* Top-k retrieval (k = 3)
+* Based on cosine similarity
+
+### 7. Evaluation
+
+* Semantic similarity between retrieved content and ground truth answers
+* Metric: Average cosine similarity score
 
 ---
 
-##  Acknowledgements
+## Results
 
-- [LangChain](https://github.com/langchain-ai/langchain)
-- [TinyLlama](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0)
-- [Flutter Docs](https://docs.flutter.dev)
-- [ChromaDB](https://www.trychroma.com/)
+| Chunk Size | Accuracy |
+| ---------- | -------- |
+| 250        | 0.29     |
+| 500        | 0.34     |
+| 1000       | 0.31     |
+| 1500       | 0.31     |
+| 2000       | 0.34     |
+
+---
+
+## Observations
+
+* Moderate chunk sizes (500–1000) show slightly better performance
+* Small chunks (250) lose contextual coherence
+* Large chunks (2000) introduce noise but remain competitive
+* Overall variation across chunk sizes is limited
+
+---
+
+## Key Insight
+
+Chunk size has a marginal effect on retrieval performance when using modern embedding models. Performance stabilizes beyond a certain chunk size threshold.
+
+---
+
+## Limitations
+
+* Limited number of evaluation queries
+* Similarity-based evaluation is an approximation
+* No ranking-based metrics such as Recall@k or MRR
+
+---
+
+## Future Work
+
+* Add Recall@k and Mean Reciprocal Rank (MRR)
+* Increase dataset size further
+* Compare multiple embedding models
+* Introduce reranking methods
+* Use LLM-based evaluation
+
+---
+
+## Tech Stack
+
+* Python
+* LangChain
+* ChromaDB
+* HuggingFace Transformers
+* Sentence Transformers
+
+---
+
+## Conclusion
+
+This experiment shows that chunk size influences retrieval performance only to a limited extent. Moderate chunk sizes provide a balance between context and noise, while extreme values degrade performance slightly.
+
+---
